@@ -1,67 +1,80 @@
 import os
 import time
+import random
+from datetime import datetime
 from google import genai
 from google.genai import types
 from notion_client import Client
 
-# 1. Initialize Configuration
-NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
+# ── Config ────────────────────────────────────────────────────────────────────
+NOTION_TOKEN      = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY")
 
-# 2. Safety Check for Environment Variables
+ARTICLE_COUNT = 3
+
+ALL_CATEGORIES = [
+    "Finance", "Economics", "Politics", "Science", "Technology",
+    "Health", "Climate", "Culture", "Fashion", "History",
+    "Philosophy", "Sports", "Space", "AI & Robotics", "Geopolitics",
+]
+
+# ── Safety check ──────────────────────────────────────────────────────────────
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, GEMINI_API_KEY]):
-    print("❌ Error: Missing required environment variables. Check your GitHub Secrets.")
+    print("❌ Error: Missing environment variables. Check your GitHub Secrets.")
     exit(1)
 
-# 3. Initialize Clients
+# ── Clients ───────────────────────────────────────────────────────────────────
 notion = Client(auth=NOTION_TOKEN)
-# The SDK automatically uses GEMINI_API_KEY from the environment
-gemini = genai.Client()
+gemini = genai.Client(api_key=GEMINI_API_KEY)   # explicit key — no env-name guessing
 
-# Match the categories from your log
-CATEGORIES = ["Culture", "Philosophy", "History"]
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def today_label():
+    return datetime.now().strftime("%-d %B %Y")   # e.g. "24 May 2026"
 
-def fetch_articles(category):
-    """Uses Gemini 1.5 Flash to find a real, current article and format a digest."""
-    print(f"  Fetching latest updates for: {category}...")
-    
-    prompt = f"""
-    Find a major, real news article or prominent essay from within the last 24 hours regarding the topic: '{category}'.
-    Provide a curated digest structured exactly like this:
-    
-    HEADLINE: [Clear, compelling headline]
-    SOURCE: [Name of publication or URL]
-    SUMMARY: [Exactly 3 sentences explaining the facts of what happened or what is argued]
-    WHY_IT_MATTERS: [1-2 sentences on its broader cultural or historical impact]
-    """
+def pick_categories(n):
+    return random.sample(ALL_CATEGORIES, n)
+
+# ── Gemini fetch ──────────────────────────────────────────────────────────────
+def fetch_article(category):
+    print(f"  Fetching: {category}...")
+
+    prompt = f"""Today is {today_label()}.
+Find ONE real, recent news article published in the last 7 days on the topic: '{category}'.
+Do NOT invent headlines or sources. Use your knowledge of recent events.
+
+Reply in exactly this format (no extra text, no markdown):
+
+HEADLINE: <headline here>
+SOURCE: <publication name and URL>
+SUMMARY: <3 sentences summarising the key facts>
+WHY_IT_MATTERS: <1 sentence on broader significance>
+"""
 
     try:
         response = gemini.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.3)
+            config=types.GenerateContentConfig(temperature=0.2),
         )
-        return response.text
+        return response.text.strip()
     except Exception as e:
-        print(f"  ❌ Error calling Gemini API for {category}: {e}")
+        print(f"  ❌ Gemini error for {category}: {e}")
         return None
 
+# ── Notion write ──────────────────────────────────────────────────────────────
 def add_to_notion(content, category):
-    """Parses the digest content and adds it as a clean item in your Notion database."""
     try:
-        # Simple line-splitting logic to pluck out the headline for the page Title
-        lines = content.split('\n')
         headline = f"Daily {category} Update"
-        for line in lines:
-            if "HEADLINE:" in line.upper():
+        for line in content.split("\n"):
+            if line.upper().startswith("HEADLINE:"):
                 headline = line.split(":", 1)[1].strip()
                 break
 
         notion.pages.create(
             parent={"database_id": NOTION_DATABASE_ID},
             properties={
-                "Name": {"title": [{"text": {"content": headline}}]},
+                "Name":     {"title":  [{"text": {"content": headline}}]},
                 "Category": {"select": {"name": category}},
             },
             children=[
@@ -74,23 +87,24 @@ def add_to_notion(content, category):
                 }
             ],
         )
-        print(f"  ✅ Successfully added {category} to Notion.")
+        print(f"  ✅ Added to Notion: {headline[:60]}")
     except Exception as e:
-        print(f"  ❌ Error adding {category} to Notion: {e}")
+        print(f"  ❌ Notion error for {category}: {e}")
 
+# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    print("[2026-05-24] Starting Daily Digest…")
-    print(f"  Categories: {', '.join(CATEGORIES)}")
-    print("  Fetching articles via Gemini + web search…")
-    
-    for category in CATEGORIES:
-        digest_content = fetch_articles(category)
-        if digest_content:
-            add_to_notion(digest_content, category)
-        
-        # 5-second sleep to easily stay clear of free tier rate restrictions
-        time.sleep(5)
-    
+    today = today_label()
+    categories = pick_categories(ARTICLE_COUNT)
+
+    print(f"[{today}] Starting Daily Digest…")
+    print(f"  Categories: {', '.join(categories)}")
+
+    for category in categories:
+        content = fetch_article(category)
+        if content:
+            add_to_notion(content, category)
+        time.sleep(60)   # free tier: 15 req/min — wait 60s between calls to be safe
+
     print("Done!")
 
 if __name__ == "__main__":
