@@ -40,8 +40,9 @@ In your repo: **Settings → Secrets and variables → Actions → New repositor
 
 | Name | Value |
 |------|-------|
-| `ANTHROPIC_API_KEY` | Your Anthropic key |
+| `GEMINI_API_KEY` | Your Gemini key |
 | `NOTION_TOKEN` | Your Notion integration token |
+| `NOTION_DATABASE_ID` | Your Notion database ID |
 
 ### 5 — Test it manually
 
