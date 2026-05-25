@@ -29,7 +29,10 @@ groq   = Groq(api_key=GROQ_API_KEY)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def today_label():
-    return datetime.now().strftime("%-d %B %Y")
+    return datetime.now().strftime("%-d %B %Y")   # e.g. "24 May 2026"
+
+def today_iso():
+    return datetime.now().strftime("%Y-%m-%d")     # e.g. "2026-05-24"
 
 def pick_categories(n):
     return random.sample(ALL_CATEGORIES, n)
@@ -75,6 +78,7 @@ def add_to_notion(content, category):
             properties={
                 "Name":     {"title":  [{"text": {"content": headline}}]},
                 "Category": {"select": {"name": category}},
+                "Date":     {"date":   {"start": today_iso()}},
             },
             children=[
                 {
@@ -95,7 +99,7 @@ def main():
     today = today_label()
     categories = pick_categories(ARTICLE_COUNT)
 
-    print(f"[{today}] Starting Daily Digest…")
+    print(f"[{today_iso()}] Starting Daily Digest…")
     print(f"  Categories: {', '.join(categories)}")
 
     for i, category in enumerate(categories):
