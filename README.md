@@ -40,7 +40,7 @@ In your repo: **Settings → Secrets and variables → Actions → New repositor
 
 | Name | Value |
 |------|-------|
-| `GEMINI_API_KEY` | Your Gemini key |
+| `GROQ_API_KEY` | Your Groq key |
 | `NOTION_TOKEN` | Your Notion integration token |
 | `NOTION_DATABASE_ID` | Your Notion database ID |
 
