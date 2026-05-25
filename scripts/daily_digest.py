@@ -2,14 +2,13 @@ import os
 import time
 import random
 from datetime import datetime
-from google import genai
-from google.genai import types
+from groq import Groq
 from notion_client import Client
 
 # ── Config ────────────────────────────────────────────────────────────────────
-NOTION_TOKEN      = os.environ.get("NOTION_TOKEN")
+NOTION_TOKEN       = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
-GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY")
+GROQ_API_KEY       = os.environ.get("GROQ_API_KEY")
 
 ARTICLE_COUNT = 3
 
@@ -20,22 +19,22 @@ ALL_CATEGORIES = [
 ]
 
 # ── Safety check ──────────────────────────────────────────────────────────────
-if not all([NOTION_TOKEN, NOTION_DATABASE_ID, GEMINI_API_KEY]):
+if not all([NOTION_TOKEN, NOTION_DATABASE_ID, GROQ_API_KEY]):
     print("❌ Error: Missing environment variables. Check your GitHub Secrets.")
     exit(1)
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 notion = Client(auth=NOTION_TOKEN)
-gemini = genai.Client(api_key=GEMINI_API_KEY)   # explicit key — no env-name guessing
+groq   = Groq(api_key=GROQ_API_KEY)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def today_label():
-    return datetime.now().strftime("%-d %B %Y")   # e.g. "24 May 2026"
+    return datetime.now().strftime("%-d %B %Y")
 
 def pick_categories(n):
     return random.sample(ALL_CATEGORIES, n)
 
-# ── Gemini fetch ──────────────────────────────────────────────────────────────
+# ── Groq fetch ────────────────────────────────────────────────────────────────
 def fetch_article(category):
     print(f"  Fetching: {category}...")
 
@@ -52,14 +51,14 @@ WHY_IT_MATTERS: <1 sentence on broader significance>
 """
 
     try:
-        response = gemini.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.2),
+        response = groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
         )
-        return response.text.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"  ❌ Gemini error for {category}: {e}")
+        print(f"  ❌ Groq error for {category}: {e}")
         return None
 
 # ── Notion write ──────────────────────────────────────────────────────────────
@@ -87,7 +86,7 @@ def add_to_notion(content, category):
                 }
             ],
         )
-        print(f"  ✅ Added to Notion: {headline[:60]}")
+        print(f"  ✅ Added: {headline[:70]}")
     except Exception as e:
         print(f"  ❌ Notion error for {category}: {e}")
 
@@ -99,11 +98,12 @@ def main():
     print(f"[{today}] Starting Daily Digest…")
     print(f"  Categories: {', '.join(categories)}")
 
-    for category in categories:
+    for i, category in enumerate(categories):
         content = fetch_article(category)
         if content:
             add_to_notion(content, category)
-        time.sleep(60)   # free tier: 15 req/min — wait 60s between calls to be safe
+        if i < len(categories) - 1:
+            time.sleep(2)
 
     print("Done!")
 
